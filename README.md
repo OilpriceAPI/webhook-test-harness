@@ -5,6 +5,11 @@
 
 A local development tool for capturing, verifying, and inspecting [OilPriceAPI](https://oilpriceapi.com) webhooks in real-time.
 
+**Documentation Links:**
+- [OilPriceAPI Webhooks Guide](https://docs.oilpriceapi.com/webhooks/) - Complete webhook API documentation
+- [Signature Verification Guide](https://docs.oilpriceapi.com/guides/webhook-verification.html) - Security best practices
+- [OilPriceAPI Dashboard](https://oilpriceapi.com/dashboard/webhooks) - Manage your webhooks
+
 ## Features
 
 - **Real-time Dashboard** - Watch webhooks arrive instantly via WebSocket
@@ -493,5 +498,10 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 Built with care for the [OilPriceAPI](https://oilpriceapi.com) community.
+
+**Resources:**
+- [OilPriceAPI Webhooks Documentation](https://docs.oilpriceapi.com/webhooks/) - Full API reference
+- [Signature Verification Guide](https://docs.oilpriceapi.com/guides/webhook-verification.html) - Security implementation
+- [API Documentation](https://docs.oilpriceapi.com) - Complete API reference
 
 **Questions?** Open an issue or contact [support@oilpriceapi.com](mailto:support@oilpriceapi.com)
