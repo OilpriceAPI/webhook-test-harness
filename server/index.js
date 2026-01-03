@@ -34,7 +34,9 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 const PORT = process.env.PORT || 3333;
 const HTTPS_PORT = process.env.HTTPS_PORT || 3334;
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+
+// Mutable webhook secret - can be set via API or environment
+let webhookSecret = process.env.WEBHOOK_SECRET || null;
 
 // Initialize database
 initDB();
@@ -75,7 +77,7 @@ app.post('/webhook', (req, res) => {
   }
 
   // Verify signature
-  const verification = verifySignature(rawBody, signature, timestamp, WEBHOOK_SECRET);
+  const verification = verifySignature(rawBody, signature, timestamp, webhookSecret);
 
   // Extract commodity from payload if present
   const commodity = payload?.data?.commodity_code || payload?.data?.commodity || null;
@@ -149,8 +151,56 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    webhookSecret: WEBHOOK_SECRET ? 'configured' : 'not configured'
+    webhookSecret: webhookSecret ? 'configured' : 'not configured'
   });
+});
+
+// Get current secret status
+app.get('/api/secret', (req, res) => {
+  res.json({
+    configured: !!webhookSecret,
+    // Show first/last 4 chars if configured (for verification)
+    preview: webhookSecret ? `${webhookSecret.slice(0, 4)}...${webhookSecret.slice(-4)}` : null
+  });
+});
+
+// Set webhook secret dynamically
+app.post('/api/secret', (req, res) => {
+  const { secret } = req.body;
+
+  if (!secret || typeof secret !== 'string') {
+    return res.status(400).json({ error: 'Secret is required and must be a string' });
+  }
+
+  if (secret.length < 16) {
+    return res.status(400).json({ error: 'Secret must be at least 16 characters' });
+  }
+
+  webhookSecret = secret;
+
+  // Notify connected clients
+  io.emit('secretUpdated', { configured: true });
+  httpIo.emit('secretUpdated', { configured: true });
+
+  console.log(`[${new Date().toISOString()}] Webhook secret updated via API`);
+
+  res.json({
+    success: true,
+    message: 'Webhook secret configured',
+    preview: `${secret.slice(0, 4)}...${secret.slice(-4)}`
+  });
+});
+
+// Clear webhook secret
+app.delete('/api/secret', (req, res) => {
+  webhookSecret = null;
+
+  io.emit('secretUpdated', { configured: false });
+  httpIo.emit('secretUpdated', { configured: false });
+
+  console.log(`[${new Date().toISOString()}] Webhook secret cleared`);
+
+  res.json({ success: true, message: 'Webhook secret cleared' });
 });
 
 // Serve dashboard for root path
@@ -195,13 +245,13 @@ if (useHttps) {
   server.listen(HTTPS_PORT, () => {
     console.log(`  HTTPS:      https://localhost:${HTTPS_PORT}`);
     console.log(`  Webhook:    https://localhost:${HTTPS_PORT}/webhook`);
-    console.log(`  Secret:     ${WEBHOOK_SECRET ? 'Configured' : 'Not configured'}`);
+    console.log(`  Secret:     ${webhookSecret ? 'Configured' : 'Not configured (set via UI or POST /api/secret)'}`);
     console.log('='.repeat(60));
     console.log('');
   });
 } else {
   console.log(`  Webhook:    http://localhost:${PORT}/webhook`);
-  console.log(`  Secret:     ${WEBHOOK_SECRET ? 'Configured' : 'Not configured'}`);
+  console.log(`  Secret:     ${webhookSecret ? 'Configured' : 'Not configured (set via UI or POST /api/secret)'}`);
   console.log('='.repeat(60));
   console.log('');
 }
