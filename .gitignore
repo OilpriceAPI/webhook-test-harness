@@ -1,0 +1,23 @@
+node_modules/
+.env
+webhooks.db
+*.log
+.DS_Store
+
+# SSL certificates (generate your own)
+*.pem
+cert.pem
+key.pem
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+
+# ngrok binary (download from ngrok.com)
+ngrok
+ngrok.exe

@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPA Webhook Test Harness</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    .json-key { color: #9cdcfe; }
+    .json-string { color: #ce9178; }
+    .json-number { color: #b5cea8; }
+    .json-boolean { color: #569cd6; }
+    .json-null { color: #569cd6; }
+    pre { font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+  <div id="app" class="flex flex-col h-screen">
+    <!-- Header -->
+    <header class="bg-gray-800 border-b border-gray-700 px-6 py-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-xl font-bold text-white">OPA Webhook Test Harness</h1>
+          <p class="text-sm text-gray-400">Real-time webhook capture and inspection</p>
+        </div>
+        <div class="flex items-center gap-4">
+          <div id="connection-status" class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-green-500"></span>
+            <span class="text-sm text-gray-400">Connected</span>
+          </div>
+          <button onclick="toggleSettings()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm font-medium flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            Settings
+          </button>
+          <button onclick="clearEvents()" class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-medium">
+            Clear All
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Settings Panel (collapsible) -->
+    <div id="settings-panel" class="hidden bg-gray-800 border-b border-gray-700 px-6 py-4">
+      <div class="max-w-4xl mx-auto">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Webhook URL -->
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">Your Webhook URL</label>
+            <div class="flex">
+              <input type="text" id="webhook-url" readonly
+                     class="flex-1 bg-gray-900 border border-gray-600 rounded-l px-3 py-2 text-sm font-mono text-gray-300"
+                     value="Loading...">
+              <button onclick="copyWebhookUrl()" class="bg-blue-600 hover:bg-blue-700 px-4 rounded-r text-sm font-medium">
+                Copy
+              </button>
+            </div>
+            <p class="mt-1 text-xs text-gray-500">Register this URL in your OilPriceAPI dashboard</p>
+          </div>
+
+          <!-- Webhook Secret -->
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-2">Webhook Secret</label>
+            <div class="flex">
+              <input type="password" id="webhook-secret-input"
+                     class="flex-1 bg-gray-900 border border-gray-600 rounded-l px-3 py-2 text-sm"
+                     placeholder="Enter your webhook secret to verify signatures"
+                     onchange="saveSettings()">
+              <button onclick="toggleSecretVisibility()" class="bg-gray-700 hover:bg-gray-600 px-3 border-y border-gray-600">
+                <svg id="eye-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+              </button>
+              <button onclick="testConnection()" class="bg-green-600 hover:bg-green-700 px-4 rounded-r text-sm font-medium">
+                Test
+              </button>
+            </div>
+            <p class="mt-1 text-xs text-gray-500">From your OilPriceAPI webhook configuration</p>
+          </div>
+        </div>
+
+        <!-- Quick Start Guide -->
+        <div class="mt-4 p-3 bg-gray-900 rounded-lg">
+          <div class="text-sm text-gray-400">
+            <strong class="text-gray-300">Quick Start:</strong>
+            1. Copy your webhook URL above
+            2. Register it at <a href="https://oilpriceapi.com/dashboard/webhooks" target="_blank" class="text-blue-400 hover:underline">oilpriceapi.com/dashboard/webhooks</a>
+            3. Paste your webhook secret here
+            4. Webhooks will appear below in real-time!
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="flex flex-1 overflow-hidden">
+      <!-- Event List (Left Panel) -->
+      <div class="w-1/3 border-r border-gray-700 flex flex-col">
+        <!-- Filters -->
+        <div class="p-4 border-b border-gray-700 space-y-3">
+          <select id="event-filter" onchange="applyFilters()" class="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm">
+            <option value="">All Event Types</option>
+            <optgroup label="Price Events">
+              <option value="price.updated">price.updated</option>
+              <option value="price.significant_change">price.significant_change</option>
+              <option value="price.threshold">price.threshold</option>
+            </optgroup>
+            <optgroup label="Drilling Events">
+              <option value="drilling.rig_count.updated">drilling.rig_count.updated</option>
+              <option value="drilling.frac_spread.updated">drilling.frac_spread.updated</option>
+              <option value="drilling.well_permit.new">drilling.well_permit.new</option>
+              <option value="drilling.well_permit.updated">drilling.well_permit.updated</option>
+              <option value="drilling.well_permits.batch">drilling.well_permits.batch</option>
+              <option value="drilling.duc_well.updated">drilling.duc_well.updated</option>
+            </optgroup>
+            <optgroup label="API Events">
+              <option value="api.limit.warning">api.limit.warning</option>
+              <option value="api.limit.exceeded">api.limit.exceeded</option>
+            </optgroup>
+            <optgroup label="Subscription Events">
+              <option value="subscription.updated">subscription.updated</option>
+              <option value="subscription.cancelled">subscription.cancelled</option>
+            </optgroup>
+            <optgroup label="Analytics Events">
+              <option value="analytics_alert.triggered">analytics_alert.triggered</option>
+            </optgroup>
+          </select>
+          <div id="stats" class="text-xs text-gray-500">
+            Total: <span id="total-count">0</span> webhooks captured
+          </div>
+        </div>
+
+        <!-- Event List -->
+        <div id="event-list" class="flex-1 overflow-y-auto">
+          <div class="p-8 text-center text-gray-500">
+            <div class="text-4xl mb-3">Waiting for webhooks...</div>
+            <div class="text-sm">Send test webhooks using the CLI:</div>
+            <code class="text-xs bg-gray-800 px-2 py-1 rounded mt-2 inline-block">npm run cli -- trigger --all</code>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event Detail (Right Panel) -->
+      <div class="flex-1 flex flex-col overflow-hidden">
+        <div id="event-detail" class="flex-1 overflow-y-auto p-6">
+          <div class="text-center text-gray-500 py-20">
+            <div class="text-2xl mb-2">Select an event</div>
+            <div class="text-sm">Click on a webhook in the list to view details</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // State
+    let events = [];
+    let selectedEvent = null;
+    let socket = null;
+    let settingsOpen = false;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      connectSocket();
+      fetchEvents();
+      loadSettings();
+      detectWebhookUrl();
+    });
+
+    // ============================================================
+    // SETTINGS PANEL
+    // ============================================================
+
+    function toggleSettings() {
+      settingsOpen = !settingsOpen;
+      const panel = document.getElementById('settings-panel');
+      panel.classList.toggle('hidden', !settingsOpen);
+    }
+
+    function loadSettings() {
+      const saved = localStorage.getItem('opa-webhook-settings');
+      if (saved) {
+        try {
+          const settings = JSON.parse(saved);
+          if (settings.webhookSecret) {
+            document.getElementById('webhook-secret-input').value = settings.webhookSecret;
+          }
+        } catch (e) {
+          console.error('Failed to load settings:', e);
+        }
+      }
+    }
+
+    function saveSettings() {
+      const webhookSecret = document.getElementById('webhook-secret-input').value;
+      localStorage.setItem('opa-webhook-settings', JSON.stringify({ webhookSecret }));
+
+      // Show brief confirmation
+      const input = document.getElementById('webhook-secret-input');
+      const originalBorder = input.style.borderColor;
+      input.style.borderColor = '#10B981';
+      setTimeout(() => { input.style.borderColor = originalBorder; }, 1000);
+    }
+
+    function detectWebhookUrl() {
+      // Try to detect the webhook URL
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      const webhookUrl = `${protocol}//${host}/webhook`;
+      document.getElementById('webhook-url').value = webhookUrl;
+    }
+
+    function copyWebhookUrl() {
+      const url = document.getElementById('webhook-url').value;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = event.target.closest('button');
+        const originalText = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.remove('bg-blue-600');
+        btn.classList.add('bg-green-600');
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.classList.remove('bg-green-600');
+          btn.classList.add('bg-blue-600');
+        }, 2000);
+      });
+    }
+
+    function toggleSecretVisibility() {
+      const input = document.getElementById('webhook-secret-input');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    async function testConnection() {
+      const btn = event.target.closest('button');
+      const originalText = btn.textContent;
+      btn.textContent = 'Testing...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+
+        btn.textContent = 'Connected!';
+        btn.classList.remove('bg-green-600');
+        btn.classList.add('bg-blue-600');
+
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.classList.remove('bg-blue-600');
+          btn.classList.add('bg-green-600');
+          btn.disabled = false;
+        }, 2000);
+      } catch (err) {
+        btn.textContent = 'Error!';
+        btn.classList.remove('bg-green-600');
+        btn.classList.add('bg-red-600');
+
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.classList.remove('bg-red-600');
+          btn.classList.add('bg-green-600');
+          btn.disabled = false;
+        }, 2000);
+      }
+    }
+
+    // ============================================================
+    // SOCKET.IO CONNECTION
+    // ============================================================
+
+    // Socket.io connection
+    function connectSocket() {
+      socket = io();
+
+      socket.on('connect', () => {
+        updateConnectionStatus(true);
+      });
+
+      socket.on('disconnect', () => {
+        updateConnectionStatus(false);
+      });
+
+      socket.on('webhook', (event) => {
+        events.unshift(event);
+        if (events.length > 100) events.pop();
+        renderEventList();
+        updateStats();
+      });
+
+      socket.on('clear', () => {
+        events = [];
+        selectedEvent = null;
+        renderEventList();
+        renderEventDetail();
+        updateStats();
+      });
+    }
+
+    function updateConnectionStatus(connected) {
+      const el = document.getElementById('connection-status');
+      if (connected) {
+        el.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-sm text-gray-400">Connected</span>';
+      } else {
+        el.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span><span class="text-sm text-gray-400">Disconnected</span>';
+      }
+    }
+
+    // Fetch initial events
+    async function fetchEvents() {
+      try {
+        const filter = document.getElementById('event-filter').value;
+        const params = new URLSearchParams({ limit: 100 });
+        if (filter) params.set('eventType', filter);
+
+        const res = await fetch(`/api/events?${params}`);
+        const data = await res.json();
+
+        events = data.events.map(e => ({
+          ...e,
+          payload: typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload
+        }));
+
+        document.getElementById('total-count').textContent = data.total;
+        renderEventList();
+      } catch (err) {
+        console.error('Failed to fetch events:', err);
+      }
+    }
+
+    // Apply filters
+    function applyFilters() {
+      fetchEvents();
+    }
+
+    // Render event list
+    function renderEventList() {
+      const container = document.getElementById('event-list');
+
+      if (events.length === 0) {
+        container.innerHTML = `
+          <div class="p-8 text-center text-gray-500">
+            <div class="text-4xl mb-3">Waiting for webhooks...</div>
+            <div class="text-sm">Send test webhooks using the CLI:</div>
+            <code class="text-xs bg-gray-800 px-2 py-1 rounded mt-2 inline-block">npm run cli -- trigger --all</code>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = events.map((event, i) => {
+        const isSelected = selectedEvent && selectedEvent.id === event.id;
+        const sigClass = event.signature_valid || event.signatureValid
+          ? 'bg-green-900 text-green-300'
+          : 'bg-red-900 text-red-300';
+        const sigText = event.signature_valid || event.signatureValid
+          ? 'Valid'
+          : (event.signature_error || event.signatureError || 'Invalid');
+
+        const eventType = event.event_type || event.eventType;
+        const commodity = event.payload?.data?.commodity_code || event.payload?.data?.commodity || event.commodity;
+        const receivedAt = event.received_at || event.receivedAt;
+
+        return `
+          <div onclick="selectEvent(${i})"
+               class="p-4 border-b border-gray-800 cursor-pointer hover:bg-gray-800 ${isSelected ? 'bg-gray-800' : ''} ${i === 0 ? 'fade-in' : ''}">
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-mono text-sm text-blue-400">${eventType}</span>
+              <span class="text-xs px-2 py-0.5 rounded ${sigClass}">${sigText}</span>
+            </div>
+            ${commodity ? `<div class="text-xs text-yellow-500 mb-1">${commodity}</div>` : ''}
+            <div class="text-xs text-gray-500">
+              ${new Date(receivedAt).toLocaleString()}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Select event
+    function selectEvent(index) {
+      selectedEvent = events[index];
+      renderEventList();
+      renderEventDetail();
+    }
+
+    // Render event detail
+    function renderEventDetail() {
+      const container = document.getElementById('event-detail');
+
+      if (!selectedEvent) {
+        container.innerHTML = `
+          <div class="text-center text-gray-500 py-20">
+            <div class="text-2xl mb-2">Select an event</div>
+            <div class="text-sm">Click on a webhook in the list to view details</div>
+          </div>
+        `;
+        return;
+      }
+
+      const eventType = selectedEvent.event_type || selectedEvent.eventType;
+      const eventId = selectedEvent.event_id || selectedEvent.eventId;
+      const signature = selectedEvent.signature;
+      const sigTimestamp = selectedEvent.signature_timestamp || selectedEvent.signatureTimestamp;
+      const sigValid = selectedEvent.signature_valid || selectedEvent.signatureValid;
+      const sigError = selectedEvent.signature_error || selectedEvent.signatureError;
+      const receivedAt = selectedEvent.received_at || selectedEvent.receivedAt;
+      const payload = selectedEvent.payload;
+
+      const sigStatusClass = sigValid ? 'text-green-400' : 'text-red-400';
+      const sigStatusText = sigValid ? 'Valid' : (sigError || 'Invalid');
+
+      container.innerHTML = `
+        <div class="space-y-6">
+          <!-- Header -->
+          <div class="border-b border-gray-700 pb-4">
+            <h2 class="text-xl font-bold text-white mb-2">${eventType}</h2>
+            <div class="text-sm text-gray-400">
+              ID: <span class="font-mono">${eventId}</span>
+            </div>
+            <div class="text-sm text-gray-400">
+              Received: ${new Date(receivedAt).toLocaleString()}
+            </div>
+          </div>
+
+          <!-- Signature Verification -->
+          <div class="bg-gray-800 rounded-lg p-4">
+            <h3 class="text-sm font-semibold text-gray-300 mb-3">Signature Verification</h3>
+            <div class="space-y-2 text-sm">
+              <div class="flex justify-between">
+                <span class="text-gray-400">Status:</span>
+                <span class="${sigStatusClass} font-medium">${sigStatusText}</span>
+              </div>
+              ${signature ? `
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Signature:</span>
+                  <span class="font-mono text-xs text-gray-300 truncate max-w-xs" title="${signature}">${signature.slice(0, 20)}...</span>
+                </div>
+              ` : ''}
+              ${sigTimestamp ? `
+                <div class="flex justify-between">
+                  <span class="text-gray-400">Timestamp:</span>
+                  <span class="font-mono text-gray-300">${sigTimestamp}</span>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- Payload -->
+          <div>
+            <h3 class="text-sm font-semibold text-gray-300 mb-3">Payload</h3>
+            <pre class="bg-gray-800 rounded-lg p-4 overflow-x-auto text-sm leading-relaxed">${syntaxHighlight(payload)}</pre>
+          </div>
+
+          <!-- Headers -->
+          ${selectedEvent.headers ? `
+            <div>
+              <h3 class="text-sm font-semibold text-gray-300 mb-3">Headers</h3>
+              <pre class="bg-gray-800 rounded-lg p-4 overflow-x-auto text-sm leading-relaxed">${syntaxHighlight(typeof selectedEvent.headers === 'string' ? JSON.parse(selectedEvent.headers) : selectedEvent.headers)}</pre>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // JSON syntax highlighting
+    function syntaxHighlight(obj) {
+      const json = JSON.stringify(obj, null, 2);
+      return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+        let cls = 'json-number';
+        if (/^"/.test(match)) {
+          if (/:$/.test(match)) {
+            cls = 'json-key';
+          } else {
+            cls = 'json-string';
+          }
+        } else if (/true|false/.test(match)) {
+          cls = 'json-boolean';
+        } else if (/null/.test(match)) {
+          cls = 'json-null';
+        }
+        return `<span class="${cls}">${match}</span>`;
+      });
+    }
+
+    // Update stats
+    function updateStats() {
+      document.getElementById('total-count').textContent = events.length;
+    }
+
+    // Clear all events
+    async function clearEvents() {
+      if (!confirm('Clear all captured webhooks?')) return;
+
+      try {
+        await fetch('/api/events', { method: 'DELETE' });
+        events = [];
+        selectedEvent = null;
+        renderEventList();
+        renderEventDetail();
+        updateStats();
+      } catch (err) {
+        console.error('Failed to clear events:', err);
+      }
+    }
+  </script>
+</body>
+</html>

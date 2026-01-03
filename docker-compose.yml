@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  webhook-harness:
+    build: .
+    ports:
+      - "3333:3333"
+    environment:
+      - PORT=3333
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+    volumes:
+      # Persist webhook database
+      - ./data:/app/data
+      # Development: mount source for hot reload
+      - ./server:/app/server:ro
+      - ./cli:/app/cli:ro
+      - ./dashboard:/app/dashboard:ro
+    restart: unless-stopped
+
+  # Optional: ngrok for tunneling (if not using Tailscale)
+  # Uncomment and set NGROK_AUTHTOKEN to enable
+  # ngrok:
+  #   image: ngrok/ngrok:latest
+  #   restart: unless-stopped
+  #   command:
+  #     - "http"
+  #     - "webhook-harness:3333"
+  #   ports:
+  #     - "4040:4040"
+  #   environment:
+  #     - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:-}
+  #   depends_on:
+  #     - webhook-harness
